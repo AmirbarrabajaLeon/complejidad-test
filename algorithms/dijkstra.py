@@ -1,7 +1,3 @@
-"""
-Implementación del algoritmo de Dijkstra para encontrar el camino más corto.
-"""
-
 import heapq
 from typing import Dict, List, Tuple, Optional
 from models.graph import Graph
@@ -68,8 +64,7 @@ def reconstruct_path(previous: Dict[str, Optional[str]], start: str, end: str) -
         current = previous[current]
     
     path.reverse()
-    
-    # Verificar que el camino comienza en start
+
     if path[0] != start:
         return []
     
@@ -79,14 +74,12 @@ def reconstruct_path(previous: Dict[str, Optional[str]], start: str, end: str) -
 def dijkstra_all_paths(graph: Graph, start: str) -> Tuple[Dict[str, float], Dict[str, Optional[str]]]:
     if not graph.node_exists(start):
         raise ValueError(f"El nodo inicial '{start}' no existe en el grafo")
-    
-    # Inicializar estructuras de datos
+
     distances: Dict[str, float] = {node: float('infinity') for node in graph.get_all_nodes()}
     distances[start] = 0
     
     previous: Dict[str, Optional[str]] = {node: None for node in graph.get_all_nodes()}
-    
-    # Cola de prioridad: (distancia, nodo)
+
     priority_queue = [(0, start)]
     visited = set()
     
@@ -100,8 +93,7 @@ def dijkstra_all_paths(graph: Graph, start: str) -> Tuple[Dict[str, float], Dict
         
         if current_distance > distances[current_node]:
             continue
-        
-        # Explorar vecinos
+
         for neighbor, weight in graph.get_neighbors(current_node):
             distance = current_distance + weight
             
