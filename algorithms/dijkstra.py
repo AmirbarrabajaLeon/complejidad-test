@@ -8,26 +8,6 @@ from models.graph import Graph
 
 
 def dijkstra(graph: Graph, start: str, end: str) -> Tuple[Optional[float], Optional[List[str]]]:
-    """
-    Implementa el algoritmo de Dijkstra para encontrar el camino más corto.
-    
-    El algoritmo de Dijkstra es un algoritmo de búsqueda de camino más corto
-    que funciona en grafos con pesos no negativos. Utiliza una cola de prioridad
-    para explorar los nodos en orden de distancia desde el origen.
-    
-    Complejidad temporal: O((V + E) log V) donde V es el número de vértices y E el número de aristas
-    Complejidad espacial: O(V)
-    
-    Args:
-        graph: Grafo sobre el cual buscar
-        start: ID del nodo inicial
-        end: ID del nodo final
-        
-    Returns:
-        Tuple[Optional[float], Optional[List[str]]]: 
-            - Distancia total del camino más corto (None si no existe)
-            - Lista de nodos en el camino (None si no existe)
-    """
     # Validar que los nodos existen
     if not graph.node_exists(start):
         raise ValueError(f"El nodo inicial '{start}' no existe en el grafo")
@@ -80,17 +60,6 @@ def dijkstra(graph: Graph, start: str, end: str) -> Tuple[Optional[float], Optio
 
 
 def reconstruct_path(previous: Dict[str, Optional[str]], start: str, end: str) -> List[str]:
-    """
-    Reconstruye el camino desde el nodo inicial al final usando el diccionario de predecesores.
-    
-    Args:
-        previous: Diccionario de predecesores
-        start: Nodo inicial
-        end: Nodo final
-        
-    Returns:
-        List[str]: Lista de nodos en el camino desde start hasta end
-    """
     path = []
     current = end
     
@@ -108,18 +77,6 @@ def reconstruct_path(previous: Dict[str, Optional[str]], start: str, end: str) -
 
 
 def dijkstra_all_paths(graph: Graph, start: str) -> Tuple[Dict[str, float], Dict[str, Optional[str]]]:
-    """
-    Calcula las distancias más cortas desde un nodo inicial a todos los demás nodos.
-    
-    Args:
-        graph: Grafo sobre el cual buscar
-        start: ID del nodo inicial
-        
-    Returns:
-        Tuple[Dict[str, float], Dict[str, Optional[str]]]:
-            - Diccionario de distancias mínimas desde start a cada nodo
-            - Diccionario de predecesores para reconstruir caminos
-    """
     if not graph.node_exists(start):
         raise ValueError(f"El nodo inicial '{start}' no existe en el grafo")
     
