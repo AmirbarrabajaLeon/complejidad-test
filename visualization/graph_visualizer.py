@@ -1,34 +1,14 @@
-"""
-Visualizador de grafos usando Graphviz.
-Permite generar imágenes de grafos y rutas encontradas.
-"""
-
 from typing import List, Optional, Set
 from models.graph import Graph
 
 
 class GraphVisualizer:
-    """
-    Clase para visualizar grafos usando Graphviz.
-    """
-    
     def __init__(self, graph: Graph):
-        """
-        Inicializa el visualizador.
-        
-        Args:
-            graph: Grafo a visualizar
-        """
         self.graph = graph
         self.graphviz_available = self._check_graphviz()
     
     def _check_graphviz(self) -> bool:
-        """
-        Verifica si Graphviz está disponible.
         
-        Returns:
-            bool: True si Graphviz está instalado, False en caso contrario
-        """
         try:
             import graphviz
             return True
@@ -42,18 +22,7 @@ class GraphVisualizer:
         max_nodes: int = 100,
         engine: str = 'dot'
     ) -> bool:
-        """
-        Visualiza el grafo completo.
-        
-        Args:
-            output_file: Nombre del archivo de salida (sin extensión)
-            format: Formato de salida ('png', 'pdf', 'svg', etc.)
-            max_nodes: Número máximo de nodos a visualizar (para evitar grafos muy grandes)
-            engine: Motor de Graphviz ('dot', 'neato', 'fdp', 'circo', etc.)
-            
-        Returns:
-            bool: True si se generó exitosamente, False en caso contrario
-        """
+
         if not self.graphviz_available:
             print("❌ Graphviz no está instalado. Instálalo con: pip install graphviz")
             print("   También necesitas instalar Graphviz en tu sistema:")
@@ -112,20 +81,7 @@ class GraphVisualizer:
         context_depth: int = 1,
         engine: str = 'dot'
     ) -> bool:
-        """
-        Visualiza una ruta específica en el grafo.
-        
-        Args:
-            path: Lista de nodos en la ruta
-            output_file: Nombre del archivo de salida (sin extensión)
-            format: Formato de salida ('png', 'pdf', 'svg', etc.)
-            show_context: Si True, muestra nodos vecinos para contexto
-            context_depth: Profundidad de vecinos a mostrar
-            engine: Motor de Graphviz
-            
-        Returns:
-            bool: True si se generó exitosamente, False en caso contrario
-        """
+       
         if not self.graphviz_available:
             print("❌ Graphviz no está instalado. Instálalo con: pip install graphviz")
             return False
@@ -215,19 +171,7 @@ class GraphVisualizer:
         highlight_nodes: Optional[List[str]] = None,
         engine: str = 'dot'
     ) -> bool:
-        """
-        Visualiza un subgrafo específico.
-        
-        Args:
-            nodes: Lista de nodos a incluir
-            output_file: Nombre del archivo de salida
-            format: Formato de salida
-            highlight_nodes: Nodos a resaltar (opcional)
-            engine: Motor de Graphviz
-            
-        Returns:
-            bool: True si se generó exitosamente
-        """
+       
         if not self.graphviz_available:
             print("❌ Graphviz no está instalado.")
             return False
@@ -277,17 +221,7 @@ class GraphVisualizer:
         output_file: str = 'comparison',
         format: str = 'png'
     ) -> bool:
-        """
-        Crea una visualización comparando múltiples rutas.
-        
-        Args:
-            paths: Lista de tuplas (nombre, path, distancia)
-            output_file: Nombre del archivo de salida
-            format: Formato de salida
-            
-        Returns:
-            bool: True si se generó exitosamente
-        """
+       
         if not self.graphviz_available:
             print("❌ Graphviz no está instalado.")
             return False
