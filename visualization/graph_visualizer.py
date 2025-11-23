@@ -14,62 +14,85 @@ class GraphVisualizer:
             return True
         except ImportError:
             return False
-    
+
     def visualize_graph(
-        self, 
-        output_file: str = 'graph',
-        format: str = 'png',
-        max_nodes: int = 100,
-        engine: str = 'dot'
+            self,
+            output_file: str = 'graph',
+            format: str = 'png',
+            max_nodes: int = 300,
+            engine: str = 'dot'  # 'dot' es jerarquico, 'neato' respeta mas las posiciones
     ) -> bool:
 
         if not self.graphviz_available:
             print("❌ Graphviz no está instalado. Instálalo con: pip install graphviz")
-            print("   También necesitas instalar Graphviz en tu sistema:")
-            print("   https://graphviz.org/download/")
             return False
-        
+
         try:
             import graphviz
-            
+
             stats = self.graph.get_stats()
+            # Seguridad para no explotar la PC en la demo
             if stats['num_nodes'] > max_nodes:
                 print(f"⚠️  El grafo tiene {stats['num_nodes']} nodos.")
-                print(f"   Solo se visualizarán los primeros {max_nodes} nodos.")
-            
-            # Crear grafo dirigido
-            dot = graphviz.Digraph(comment='Grafo de Rutas', engine=engine)
-            dot.attr(rankdir='LR')  # Left to Right
-            dot.attr('node', shape='circle', style='filled', fillcolor='lightblue')
-            
+                print(f"   Visualizando los primeros {max_nodes} para mantener claridad.")
+
+            # Configuración estética para Tendencias
+            dot = graphviz.Digraph(comment='Mapa de Tendencias', engine=engine)
+            dot.attr(rankdir='LR')  # Izquierda a Derecha (Línea de tiempo visual)
+            dot.attr('node', shape='note', style='filled', fillcolor='lightyellow')  # Forma de "nota" para noticias
+
             # Obtener nodos a visualizar
             all_nodes = self.graph.get_all_nodes()
             nodes_to_show = all_nodes[:max_nodes]
-            
-            # Agregar nodos
+
+            # --- CAMBIO CLAVE AQUÍ ---
             for node_id in nodes_to_show:
-                dot.node(node_id, node_id)
-            
-            # Agregar aristas
+                node = self.graph.get_node(node_id)
+
+                # LOGICA DE COLORES (SENTIMIENTO)
+                fill_color = 'lightyellow'  # Default Neutral
+
+                # Accedemos al atributo tone si existe
+                tone = getattr(node, 'tone', 0)
+
+                if tone > 0:
+                    fill_color = '#a8e6cf'  # Verde Pastel (Positivo)
+                elif tone < 0:
+                    fill_color = '#ff8b94'  # Rojo Pastel (Negativo)
+
+
+                # Intentamos crear una etiqueta bonita:
+                # Titular (recortado a 20 chars) + Fecha
+                label_text = node_id
+                if hasattr(node, 'name') and node.name:
+                    short_name = (node.name[:20] + '..') if len(node.name) > 20 else node.name
+                    date_text = getattr(node, 'date', '')
+                    label_text = f"{short_name}\n({date_text})"
+
+                # Aplicamos el color
+                dot.node(node_id, label=label_text, style='filled', fillcolor=fill_color)
+                # -------------------------
+
+            # Agregar aristas (Conexiones por similitud)
             edges_added = 0
             for node_id in nodes_to_show:
                 for neighbor, weight in self.graph.get_neighbors(node_id):
                     if neighbor in nodes_to_show:
-                        dot.edge(node_id, neighbor, label=f'{weight:.1f}')
+                        # Las aristas más fuertes (mayor similitud) se pintan más gruesas
+                        penwidth = str(1 + (weight * 2))
+                        dot.edge(node_id, neighbor, label=f'{weight:.2f}', penwidth=penwidth)
                         edges_added += 1
-            
+
             # Renderizar
-            dot.render(output_file, format=format, cleanup=True)
-            
-            print(f"✓ Grafo visualizado exitosamente")
-            print(f"  Archivo: {output_file}.{format}")
-            print(f"  Nodos: {len(nodes_to_show)}")
-            print(f"  Aristas: {edges_added}")
-            
+            output_path = dot.render(output_file, format=format, cleanup=True)
+
+            print(f"✓ Grafo generado: {output_path}")
             return True
-            
+
         except Exception as e:
-            print(f"❌ Error al visualizar el grafo: {str(e)}")
+            print(f"❌ Error al visualizar: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def visualize_path(
