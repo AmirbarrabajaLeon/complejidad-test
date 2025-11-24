@@ -257,8 +257,25 @@ class NewsAnalyzerApp(ctk.CTk):
 
         # 3. Ordenar y Graficar
         from collections import Counter
+
+
         counter = Counter(all_words)
-        top_10 = counter.most_common(10)
+
+        # Convertimos el contador a una lista de tuplas: [('word', 50), ('other', 20)...]
+        items = list(counter.items())
+
+        # Usamos merge_sort ordenando por el segundo elemento (la frecuencia)
+        # Nota: Merge Sort ordena de menor a mayor.
+        try:
+            sorted_items = merge_sort(items, key_func=lambda x: x[1])
+
+            # Como queremos los mayores, tomamos los últimos 10 y le damos la vuelta
+            top_10 = sorted_items[-10:]  # Los 10 del final (los más grandes)
+            top_10.reverse()  # Para que el #1 quede primero
+
+        except Exception as e:
+            print(f"Error en Merge Sort: {e}, usando backup...")
+            top_10 = counter.most_common(10)
 
         words_plot = [x[0].upper() for x in top_10]
         counts_plot = [x[1] for x in top_10]
@@ -270,7 +287,7 @@ class NewsAnalyzerApp(ctk.CTk):
         ax.invert_yaxis()
 
         ax.bar_label(bars, padding=3, color='white', fontsize=10, fontweight='bold')
-        ax.set_title("TOP 10 TENDENCIAS GLOBALES (Consistente)", color='white', fontsize=14)
+        ax.set_title("TOP 10 TENDENCIAS GLOBALES", color='white', fontsize=14)
         ax.margins(x=0.1)
 
         filename = "chart_top10.png"
