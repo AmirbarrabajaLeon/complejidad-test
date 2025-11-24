@@ -1,13 +1,12 @@
 import customtkinter as ctk
-from PIL import Image
+from PIL import Image, ImageTk  # ImageTk es necesario para el Canvas
 import os
 import sys
-import webbrowser  # Para abrir links
-import matplotlib.pyplot as plt  # Para graficos estadisticos
-
+import webbrowser
+import matplotlib.pyplot as plt
+import tkinter as tk  # Necesario para el Canvas de 2D Scroll
 
 # --- CONFIGURACIÓN DE SEGURIDAD PARA GRAPHVIZ ---
-# Ajusta esta ruta si tu instalación es diferente
 path_graphviz = r"C:\Program Files\Graphviz\bin"
 if os.path.exists(path_graphviz):
     os.environ["PATH"] += os.pathsep + path_graphviz
@@ -16,8 +15,7 @@ if os.path.exists(path_graphviz):
 from models.graph import Graph
 from data.gdelt_parser import GDELTParser
 from visualization.graph_visualizer import GraphVisualizer
-# ... otros imports ...
-from algorithms.merge_sort import merge_sort # <--- AGREGAR ESTO
+from algorithms.merge_sort import merge_sort  # Tu algoritmo de ordenamiento
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -31,7 +29,9 @@ class NewsAnalyzerApp(ctk.CTk):
         self.geometry("1300x850")
 
         self.all_data = []
-        self.current_filtered_data = []  # Guardamos lo ultimo buscado para los links
+        self.current_filtered_data = []
+        self.original_pil_image = None  # Para el zoom
+        self.current_tk_image = None  # Referencia para evitar garbage collection
 
         # Layout Principal
         self.grid_columnconfigure(1, weight=1)
@@ -56,38 +56,47 @@ class NewsAnalyzerApp(ctk.CTk):
                                          command=self.ejecutar_analisis)
         self.btn_analyze.grid(row=4, column=0, padx=20, pady=20)
 
+        # --- PANEL DE ZOOM (OCULTO POR DEFECTO) ---
+        # Lo metemos en un frame para mostrarlo/ocultarlo fácil
+        self.zoom_panel = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.zoom_panel.grid(row=5, column=0, pady=20, sticky="ew")
+
+        ctk.CTkLabel(self.zoom_panel, text="--- CONTROL DE VISTA ---").pack()
+        self.lbl_zoom = ctk.CTkLabel(self.zoom_panel, text="Zoom: 100%", anchor="w")
+        self.lbl_zoom.pack(pady=(5, 0))
+
+        self.slider_zoom = ctk.CTkSlider(self.zoom_panel, from_=0.1, to=2.0, number_of_steps=19,
+                                         command=self.actualizar_zoom)
+        self.slider_zoom.set(1.0)
+        self.slider_zoom.pack(pady=5)
+
+        # Ocultamos el panel al inicio (porque iniciamos en otra pestaña)
+        self.zoom_panel.grid_remove()
+        # ------------------------------------------
+
         self.lbl_status = ctk.CTkLabel(self.sidebar, text="Estado: Esperando...", text_color="gray", wraplength=200)
         self.lbl_status.grid(row=9, column=0, padx=20, pady=20, sticky="s")
 
         # === PANEL DERECHO (TABS) ===
-        self.tabview = ctk.CTkTabview(self)
+        # Agregamos 'command' para detectar cambio de pestaña
+        self.tabview = ctk.CTkTabview(self, command=self.al_cambiar_pestana)
         self.tabview.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
 
-        # ORDEN DE PESTAÑAS MODIFICADO:
-        # 1. Comparación (Lo principal)
-        # 2. Fuentes (Resultados de búsqueda)
-        # 3. Grafo (Visualización extra)
         self.tab_stats = self.tabview.add("Comparación (Vs)")
         self.tab_links = self.tabview.add("Fuentes y Enlaces")
         self.tab_graph = self.tabview.add("Grafo Temporal")
 
-        # --- SETUP TAB 1: ESTADÍSTICAS (VS) ---
+        # --- SETUP TAB 1: ESTADÍSTICAS ---
         self.tab_stats.grid_columnconfigure(0, weight=1)
         self.tab_stats.grid_rowconfigure(1, weight=1)
-
         self.frame_vs = ctk.CTkFrame(self.tab_stats)
         self.frame_vs.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-
-        self.entry_term1 = ctk.CTkEntry(self.frame_vs, placeholder_text="Término A (ej: Biden)")
+        self.entry_term1 = ctk.CTkEntry(self.frame_vs, placeholder_text="Término A")
         self.entry_term1.pack(side="left", padx=5, expand=True, fill="x")
-
         ctk.CTkLabel(self.frame_vs, text="VS").pack(side="left", padx=5)
-
-        self.entry_term2 = ctk.CTkEntry(self.frame_vs, placeholder_text="Término B (ej: Trump)")
+        self.entry_term2 = ctk.CTkEntry(self.frame_vs, placeholder_text="Término B")
         self.entry_term2.pack(side="left", padx=5, expand=True, fill="x")
-
         ctk.CTkButton(self.frame_vs, text="Comparar", command=self.comparar_terminos).pack(side="left", padx=5)
-
         self.lbl_chart = ctk.CTkLabel(self.tab_stats, text="")
         self.lbl_chart.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
 
@@ -97,37 +106,58 @@ class NewsAnalyzerApp(ctk.CTk):
         self.scroll_links = ctk.CTkScrollableFrame(self.tab_links, label_text="Noticias Relacionadas")
         self.scroll_links.grid(row=0, column=0, sticky="nsew")
 
-        # --- SETUP TAB 3: GRAFO ---
+        # --- SETUP TAB 3: GRAFO (CANVAS CON SCROLL 2D) ---
         self.tab_graph.grid_columnconfigure(0, weight=1)
         self.tab_graph.grid_rowconfigure(0, weight=1)
-        # Orientation horizontal para scroll infinito lateral
-        self.scroll_frame_graph = ctk.CTkScrollableFrame(self.tab_graph, orientation="horizontal",
-                                                         label_text="Línea de Tiempo")
-        self.scroll_frame_graph.grid(row=0, column=0, sticky="nsew")
-        self.image_label = ctk.CTkLabel(self.scroll_frame_graph, text="Realiza una búsqueda para ver el grafo.")
-        self.image_label.pack(expand=True, fill="both", padx=10, pady=10)
+
+        # Usamos un Canvas de Tkinter normal porque permite scroll X e Y simultáneo
+        # Frame contenedor
+        self.graph_container = ctk.CTkFrame(self.tab_graph)
+        self.graph_container.grid(row=0, column=0, sticky="nsew")
+        self.graph_container.grid_rowconfigure(0, weight=1)
+        self.graph_container.grid_columnconfigure(0, weight=1)
+
+        # Canvas y Scrollbars
+        self.canvas = tk.Canvas(self.graph_container, bg="#2b2b2b", highlightthickness=0)
+        self.v_scroll = ctk.CTkScrollbar(self.graph_container, orientation="vertical", command=self.canvas.yview)
+        self.h_scroll = ctk.CTkScrollbar(self.graph_container, orientation="horizontal", command=self.canvas.xview)
+
+        self.canvas.configure(yscrollcommand=self.v_scroll.set, xscrollcommand=self.h_scroll.set)
+
+        # Grid layout para canvas y barras
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        self.v_scroll.grid(row=0, column=1, sticky="ns")
+        self.h_scroll.grid(row=1, column=0, sticky="ew")
+
+        # Placeholder text en el canvas
+        self.canvas_text = self.canvas.create_text(400, 300, text="Realiza una búsqueda para ver el grafo.",
+                                                   fill="white", font=("Arial", 16))
+
+    def al_cambiar_pestana(self):
+        """Muestra u oculta los controles de Zoom según la pestaña activa"""
+        tab_actual = self.tabview.get()
+        if tab_actual == "Grafo Temporal":
+            self.zoom_panel.grid()  # Mostrar
+        else:
+            self.zoom_panel.grid_remove()  # Ocultar
 
     def cargar_datos(self):
         self.lbl_status.configure(text="Cargando CSV...", text_color="yellow")
         self.update()
         try:
-            # Asegúrate que la ruta sea correcta
             filepath = os.path.join("data", "20251004.export.CSV")
             if not os.path.exists(filepath):
-                self.lbl_status.configure(text="ERROR: Falta CSV en carpeta data", text_color="red")
+                self.lbl_status.configure(text="ERROR: Falta CSV", text_color="red")
                 return
 
             parser = GDELTParser(filepath)
-            # Carga 5000 filas para tener bastantes datos
             parser.parse(max_rows=5000)
             self.all_data = parser.get_data_for_graph()
-
             self.lbl_status.configure(text=f"Dataset OK: {len(self.all_data)} noticias", text_color="green")
         except Exception as e:
             self.lbl_status.configure(text=f"Error: {str(e)}", text_color="red")
 
     def ejecutar_analisis(self):
-        """Función principal al buscar"""
         if not self.all_data:
             self.lbl_status.configure(text="¡Carga datos primero!", text_color="orange")
             return
@@ -136,12 +166,9 @@ class NewsAnalyzerApp(ctk.CTk):
         self.lbl_status.configure(text="Procesando...", text_color="yellow")
         self.update()
 
-        # 1. FILTRADO INTELIGENTE
         filtered = []
         if keyword:
-            # Buscar en Titular o Contenido
             filtered = [d for d in self.all_data if keyword in d['headline'].lower() or keyword in d['content'].lower()]
-            # Top 100
             filtered = filtered[:100]
         else:
             filtered = self.all_data[:50]
@@ -152,67 +179,80 @@ class NewsAnalyzerApp(ctk.CTk):
             self.lbl_status.configure(text="No se encontraron resultados.", text_color="orange")
             return
 
-        print("Aplicando Merge Sort...")
-        filtered = merge_sort(filtered, key_func=lambda x: x['date'])
+        # ALGORITMO 1: MERGE SORT (Divide y Vencerás)
+        # Ordenamos las noticias por fecha para la línea de tiempo
+        try:
+            filtered = merge_sort(filtered, key_func=lambda x: x['date'])
+        except Exception as e:
+            print(f"Error sorting: {e}")
 
-        # 2. GENERAR GRAFO (Backend) - ESTILO MALLA TEMPORAL
+        # GENERAR GRAFO (MALLA TEMPORAL)
         temp_graph = Graph()
         temp_graph.load_from_news_dataset(filtered)
         nodes = temp_graph.get_all_nodes()
 
-        # Conectamos cada noticia con las siguientes 3 noticias (Ventana Deslizante)
-        # Esto crea una "RED" en lugar de una "LÍNEA".
         WINDOW_SIZE = 3
-
         for i in range(len(nodes)):
-            # Conectamos el nodo actual 'i' con los próximos k vecinos
             for j in range(1, WINDOW_SIZE + 1):
                 if i + j < len(nodes):
-                    # Calculamos un peso: más fuerte si está cerca, más débil si está lejos
                     weight = round(1.0 / j, 2)
                     temp_graph.add_edge(nodes[i], nodes[i + j], weight=weight)
 
-        # 3. DIBUJAR GRAFO (Frontend)
         try:
             viz = GraphVisualizer(temp_graph)
             output = "grafo_temp"
+            # Engine 'dot' es el mejor para líneas de tiempo
             success = viz.visualize_graph(output_file=output, format="png", max_nodes=100, engine='dot')
 
             if success:
-                self.mostrar_imagen_grafo(output + ".png")
+                self.cargar_imagen_memoria(output + ".png")
                 self.generar_lista_links()
                 self.lbl_status.configure(text=f"Análisis: {len(nodes)} noticias", text_color="white")
 
-                # CAMBIO SOLICITADO: Ir directo a la pestaña Fuentes
-                self.tabview.set("Fuentes y Enlaces")
+                # --- SIN REDIRECCIÓN FORZADA ---
+                # El usuario se queda en la pestaña donde estaba (o puede ir manualmente)
             else:
                 self.lbl_status.configure(text="Error Graphviz", text_color="red")
         except Exception as e:
             self.lbl_status.configure(text=f"Error: {e}", text_color="red")
 
-    def mostrar_imagen_grafo(self, path):
+    def cargar_imagen_memoria(self, path):
         if os.path.exists(path):
-            pil_img = Image.open(path)
-            w, h = pil_img.size
+            self.original_pil_image = Image.open(path)
+            self.slider_zoom.set(1.0)
+            self.actualizar_zoom(1.0)
 
-            # Zoom/Altura fija para scroll horizontal
-            viewport_height = 100
+    def actualizar_zoom(self, value):
+        if self.original_pil_image is None: return
 
-            aspect = w / h
-            new_w = int(viewport_height * aspect)
+        scale = float(value)
+        self.lbl_zoom.configure(text=f"Zoom: {int(scale * 100)}%")
 
-            pil_img = pil_img.resize((new_w, viewport_height), Image.Resampling.LANCZOS)
-            ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(new_w, viewport_height))
-            self.image_label.configure(image=ctk_img, text="")
+        # Calcular tamaño
+        orig_w, orig_h = self.original_pil_image.size
+        new_w = int(orig_w * scale)
+        new_h = int(orig_h * scale)
+
+        # Redimensionar
+        resized_pil = self.original_pil_image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+        # Convertir a formato compatible con Tkinter Canvas
+        self.current_tk_image = ImageTk.PhotoImage(resized_pil)
+
+        # Actualizar Canvas
+        self.canvas.delete("all")  # Borrar anterior
+        # Poner imagen en coordenadas 0,0
+        self.canvas.create_image(0, 0, image=self.current_tk_image, anchor="nw")
+
+        # Actualizar región de scroll para que las barras funcionen
+        self.canvas.configure(scrollregion=(0, 0, new_w, new_h))
 
     def generar_lista_links(self):
-        """Rellena la Pestaña Fuentes"""
-        # Limpiar lo anterior
         for widget in self.scroll_links.winfo_children():
             widget.destroy()
 
         if not self.current_filtered_data:
-            ctk.CTkLabel(self.scroll_links, text="No hay noticias para mostrar.").pack()
+            ctk.CTkLabel(self.scroll_links, text="No hay noticias.").pack()
             return
 
         for item in self.current_filtered_data:
@@ -220,7 +260,6 @@ class NewsAnalyzerApp(ctk.CTk):
             card.pack(fill="x", padx=5, pady=5)
 
             title = item.get('headline', 'Sin título')
-            # Recortar títulos muy largos
             if len(title) > 100: title = title[:100] + "..."
 
             ctk.CTkLabel(card, text=title, font=("Arial", 14, "bold"), anchor="w").pack(fill="x", padx=5, pady=(5, 0))
@@ -228,7 +267,11 @@ class NewsAnalyzerApp(ctk.CTk):
             sub_frame = ctk.CTkFrame(card, fg_color="transparent")
             sub_frame.pack(fill="x", padx=5, pady=5)
 
-            ctk.CTkLabel(sub_frame, text=item.get('date', ''), text_color="gray").pack(side="left")
+            # Tono visual (Texto)
+            # tone_val = item.get('tone', 0)
+            # tone_text = "🟢 Positivo" if tone_val > 0 else ("🔴 Conflicto" if tone_val < 0 else "🟡 Neutral")
+
+            ctk.CTkLabel(sub_frame, text=f"{item.get('date', '')}", text_color="gray").pack(side="left")
 
             url = item.get('url', '')
             if url:
@@ -237,44 +280,24 @@ class NewsAnalyzerApp(ctk.CTk):
                 btn.pack(side="right")
 
     def comparar_terminos(self):
-        """Lógica de Comparación (Estadísticas)"""
         t1 = self.entry_term1.get().lower().strip()
         t2 = self.entry_term2.get().lower().strip()
+        if not t1 or not t2: return
+        if not self.all_data: return
 
-        if not t1 or not t2:
-            print("⚠️ Faltan términos")
-            return
-
-        if not self.all_data:
-            print("⚠️ Carga datos primero")
-            return
-
-        # Búsqueda profunda en todo el texto
         count1 = 0
         count2 = 0
-
         for d in self.all_data:
             full_text = (d['headline'] + " " + d['content'] + " " + d.get('url', '')).lower()
             if t1 in full_text: count1 += 1
             if t2 in full_text: count2 += 1
 
-        # Generar gráfico
         plt.style.use('dark_background')
         fig, ax = plt.subplots(figsize=(6, 4))
-
         bars = ax.bar([t1.upper(), t2.upper()], [count1, count2], color=['#3498db', '#e74c3c'])
-
-        ax.margins(y=0.2)  # Agrega 20% de aire arriba
-
         ax.bar_label(bars, padding=3, color='white', fontsize=12, fontweight='bold')
-
-
+        ax.margins(y=0.2)
         ax.set_title(f"Frecuencia: {t1.upper()} vs {t2.upper()}", color='white')
-
-        # Ajuste si ambos son 0
-        if count1 == 0 and count2 == 0:
-            ax.set_ylim(0, 1)
-            ax.text(0.5, 0.5, "Sin coincidencias", ha='center', va='center', color='gray')
 
         filename = "chart_temp.png"
         plt.savefig(filename, facecolor='#2b2b2b', bbox_inches='tight')
