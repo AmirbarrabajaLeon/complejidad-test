@@ -155,12 +155,22 @@ class NewsAnalyzerApp(ctk.CTk):
         print("Aplicando Merge Sort...")
         filtered = merge_sort(filtered, key_func=lambda x: x['date'])
 
-        # 2. GENERAR GRAFO (Backend)
+        # 2. GENERAR GRAFO (Backend) - ESTILO MALLA TEMPORAL
         temp_graph = Graph()
         temp_graph.load_from_news_dataset(filtered)
         nodes = temp_graph.get_all_nodes()
-        for i in range(len(nodes) - 1):
-            temp_graph.add_edge(nodes[i], nodes[i + 1], weight=1.0)
+
+        # Conectamos cada noticia con las siguientes 3 noticias (Ventana Deslizante)
+        # Esto crea una "RED" en lugar de una "LÍNEA".
+        WINDOW_SIZE = 3
+
+        for i in range(len(nodes)):
+            # Conectamos el nodo actual 'i' con los próximos k vecinos
+            for j in range(1, WINDOW_SIZE + 1):
+                if i + j < len(nodes):
+                    # Calculamos un peso: más fuerte si está cerca, más débil si está lejos
+                    weight = round(1.0 / j, 2)
+                    temp_graph.add_edge(nodes[i], nodes[i + j], weight=weight)
 
         # 3. DIBUJAR GRAFO (Frontend)
         try:
