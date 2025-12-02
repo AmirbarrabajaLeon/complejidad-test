@@ -5,7 +5,8 @@ import sys
 import webbrowser
 import matplotlib.pyplot as plt
 import tkinter as tk
-from collections import Counter  # Para el conteo rápido (Hash Map)
+from collections import Counter
+import math
 
 # --- CONFIGURACIÓN DE SEGURIDAD PARA GRAPHVIZ ---
 path_graphviz = r"C:\Program Files\Graphviz\bin"
@@ -33,6 +34,7 @@ class NewsAnalyzerApp(ctk.CTk):
         self.current_filtered_data = []
         self.original_pil_image = None
         self.current_tk_image = None
+        self.temp_graph_obj = None  # Guardamos el objeto grafo para algoritmos
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -56,15 +58,26 @@ class NewsAnalyzerApp(ctk.CTk):
                                          command=self.ejecutar_analisis)
         self.btn_analyze.grid(row=4, column=0, padx=20, pady=20)
 
-        # --- NUEVO BOTÓN KILLER ---
         self.btn_top10 = ctk.CTkButton(self.sidebar, text="3. Ver Top 10 Global", fg_color="#d35400",
                                        hover_color="#e67e22", command=self.generar_top_10_global)
         self.btn_top10.grid(row=5, column=0, padx=20, pady=10)
-        # --------------------------
+
+        # --- NUEVOS BOTONES DE ALGORITMOS AVANZADOS ---
+        self.lbl_algo = ctk.CTkLabel(self.sidebar, text="Algoritmos Avanzados:", anchor="w", font=("Arial", 12, "bold"))
+        self.lbl_algo.grid(row=6, column=0, padx=20, pady=(20, 5))
+
+        self.btn_dijkstra = ctk.CTkButton(self.sidebar, text="📍 Ruta Narrativa (Dijkstra)", fg_color="#2980b9",
+                                          command=self.mostrar_ruta_narrativa)
+        self.btn_dijkstra.grid(row=7, column=0, padx=20, pady=5)
+
+        self.btn_floyd = ctk.CTkButton(self.sidebar, text="⭐ Noticia Central (Floyd)", fg_color="#8e44ad",
+                                       command=self.mostrar_noticia_central)
+        self.btn_floyd.grid(row=8, column=0, padx=20, pady=5)
+        # ----------------------------------------------
 
         # PANEL DE ZOOM (OCULTO)
         self.zoom_panel = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        self.zoom_panel.grid(row=6, column=0, pady=20, sticky="ew")
+        self.zoom_panel.grid(row=9, column=0, pady=20, sticky="ew")
 
         self.lbl_zoom = ctk.CTkLabel(self.zoom_panel, text="Zoom: 100%", anchor="w")
         self.lbl_zoom.pack(pady=(5, 0))
@@ -76,7 +89,7 @@ class NewsAnalyzerApp(ctk.CTk):
         self.zoom_panel.grid_remove()
 
         self.lbl_status = ctk.CTkLabel(self.sidebar, text="Estado: Esperando...", text_color="gray", wraplength=200)
-        self.lbl_status.grid(row=9, column=0, padx=20, pady=20, sticky="s")
+        self.lbl_status.grid(row=10, column=0, padx=20, pady=20, sticky="s")
 
         # === PANEL DERECHO ===
         self.tabview = ctk.CTkTabview(self, command=self.al_cambiar_pestana)
@@ -123,24 +136,110 @@ class NewsAnalyzerApp(ctk.CTk):
         self.canvas_text = self.canvas.create_text(400, 300, text="Realiza una búsqueda para ver el grafo.",
                                                    fill="white", font=("Arial", 16))
 
-    # --- FUNCIÓN AUXILIAR PARA GARANTIZAR CONSISTENCIA ---
+    # --- FUNCIONES AUXILIARES ---
     def _obtener_palabras_limpias(self, data_item):
-        """
-        Extrae palabras limpias de una noticia para que el conteo
-        sea IDÉNTICO en el Top 10 y en la Comparación.
-        """
-        # 1. Juntar todo el texto relevante
         full_text = (data_item['headline'] + " " + data_item['content']).lower()
-
-        # 2. Reemplazar puntuación por espacios (para separar "Trump's" -> "Trump s")
-        # Esto es clave: separar palabras pegadas a signos
         for char in [".", ",", ":", ";", '"', "'", "-", "(", ")", "!", "?", "/", "[", "]"]:
             full_text = full_text.replace(char, " ")
+        return full_text.split()
 
-        # 3. Dividir por espacios
-        words = full_text.split()
+    def _calcular_similitud_jaccard(self, text1, text2):
+        """Algoritmo de Fuerza Bruta para calcular similitud de conjuntos"""
+        # Tokenización simple
+        set1 = set(text1.lower().split())
+        set2 = set(text2.lower().split())
 
-        return words
+        # Filtramos palabras irrelevantes muy cortas
+        set1 = {w for w in set1 if len(w) > 3}
+        set2 = {w for w in set2 if len(w) > 3}
+
+        if not set1 or not set2: return 0.0
+
+        intersection = len(set1.intersection(set2))
+        union = len(set1.union(set2))
+
+        return intersection / union if union > 0 else 0.0
+
+    # --- ALGORITMOS EN LA CLASE PARA ESTABILIDAD ---
+    def _dijkstra(self, graph, start_id, end_id):
+        """Implementación interna de Dijkstra para asegurar compatibilidad"""
+        # Inicialización
+        distances = {node: float('inf') for node in graph.nodes}
+        previous = {node: None for node in graph.nodes}
+        distances[start_id] = 0
+        unvisited = list(graph.nodes.keys())
+
+        while unvisited:
+            # Seleccionar nodo con menor distancia (Greedy)
+            # Esto se podría optimizar con PriorityQueue (Heap), pero lista es válida para <100 nodos
+            current_node = min(unvisited, key=lambda node: distances[node])
+
+            if distances[current_node] == float('inf'):
+                break  # No hay camino
+
+            if current_node == end_id:
+                break  # Llegamos
+
+            unvisited.remove(current_node)
+
+            # Relajar aristas
+            for neighbor, weight in graph.get_neighbors(current_node):
+                alt = distances[current_node] + weight
+                if alt < distances[neighbor]:
+                    distances[neighbor] = alt
+                    previous[neighbor] = current_node
+
+        # Reconstruir camino
+        path = []
+        current = end_id
+        if previous[current] is not None or current == start_id:
+            while current is not None:
+                path.insert(0, current)
+                current = previous[current]
+        return path
+
+    def _floyd_warshall_centrality(self, graph):
+        """Implementación de Floyd-Warshall para encontrar nodo central"""
+        nodes = list(graph.nodes.keys())
+        n = len(nodes)
+        if n == 0: return None
+
+        # Mapeo de ID a índice
+        id_to_idx = {node_id: i for i, node_id in enumerate(nodes)}
+
+        # Inicializar matriz de distancias
+        dist = [[float('inf')] * n for _ in range(n)]
+
+        # Distancia a sí mismo es 0
+        for i in range(n):
+            dist[i][i] = 0
+
+        # Llenar con pesos existentes
+        for u_id in nodes:
+            u = id_to_idx[u_id]
+            for v_id, weight in graph.get_neighbors(u_id):
+                if v_id in id_to_idx:
+                    v = id_to_idx[v_id]
+                    dist[u][v] = weight
+
+        # Algoritmo O(V^3)
+        for k in range(n):
+            for i in range(n):
+                for j in range(n):
+                    if dist[i][j] > dist[i][k] + dist[k][j]:
+                        dist[i][j] = dist[i][k] + dist[k][j]
+
+        # Calcular centralidad (menor suma de distancias a otros)
+        min_total_dist = float('inf')
+        central_node = None
+
+        for i in range(n):
+            total_dist = sum(d for d in dist[i] if d != float('inf'))
+            if total_dist < min_total_dist and total_dist > 0:
+                min_total_dist = total_dist
+                central_node = nodes[i]
+
+        return central_node
 
     def al_cambiar_pestana(self):
         tab_actual = self.tabview.get()
@@ -177,7 +276,7 @@ class NewsAnalyzerApp(ctk.CTk):
         filtered = []
         if keyword:
             filtered = [d for d in self.all_data if keyword in d['headline'].lower() or keyword in d['content'].lower()]
-            filtered = filtered[:100]
+            filtered = filtered[:100]  # Limitamos a 100 para claridad
         else:
             filtered = self.all_data[:50]
 
@@ -188,38 +287,133 @@ class NewsAnalyzerApp(ctk.CTk):
             return
 
         try:
-            filtered = merge_sort(filtered, key_func=lambda x: x['date'])
+            # CAMBIO CRÍTICO: Ordenar por Fecha Y LUEGO por ID para desempatar eventos del mismo día
+            # Esto crea una línea de tiempo estricta y correcta
+            filtered = merge_sort(filtered, key_func=lambda x: (x['date'], int(x['id'])))
         except Exception as e:
             print(f"Error sorting: {e}")
 
-        temp_graph = Graph()
-        temp_graph.load_from_news_dataset(filtered)
-        nodes = temp_graph.get_all_nodes()
+        self.temp_graph_obj = Graph()
+        self.temp_graph_obj.load_from_news_dataset(filtered)
+        nodes = self.temp_graph_obj.get_all_nodes()
 
+        # --- CONSTRUCCIÓN INTELIGENTE DEL GRAFO ---
         WINDOW_SIZE = 3
         for i in range(len(nodes)):
+            node_a = self.temp_graph_obj.get_node(nodes[i])
+
             for j in range(1, WINDOW_SIZE + 1):
                 if i + j < len(nodes):
-                    weight = round(1.0 / j, 2)
-                    temp_graph.add_edge(nodes[i], nodes[i + j], weight=weight)
+                    node_b = self.temp_graph_obj.get_node(nodes[i + j])
+
+                    # 1. Distancia Temporal (Base)
+                    temporal_cost = 1.0 / j  # Vecino cercano cuesta más (1.0), lejano cuesta menos (0.5)
+                    # Invertimos lógica para Dijkstra: Queremos que saltar sea "barato" si es similar
+
+                    # 2. Similitud Semántica (Jaccard)
+                    similitud = self._calcular_similitud_jaccard(node_a.content, node_b.content)
+
+                    # 3. Diferencia de Tono
+                    tone_diff = abs(node_a.tone - node_b.tone)
+
+                    # FÓRMULA MAESTRA DEL PESO
+                    # Peso = (Costo Temporal) * (Factor de No-Similitud)
+                    # Si son muy similares, el peso baja drásticamente (camino preferido)
+                    weight = (1.0 / j) * (1.0 - similitud) + (tone_diff * 0.1)
+
+                    # Aseguramos peso mínimo positivo
+                    weight = max(0.1, round(weight, 2))
+
+                    self.temp_graph_obj.add_edge(nodes[i], nodes[i + j], weight=weight)
 
         try:
-            viz = GraphVisualizer(temp_graph)
+            viz = GraphVisualizer(self.temp_graph_obj)
             output = "grafo_temp"
             success = viz.visualize_graph(output_file=output, format="png", max_nodes=100, engine='dot')
 
             if success:
                 self.cargar_imagen_memoria(output + ".png")
-                self.generar_lista_links()
-                self.lbl_status.configure(text=f"Análisis: {len(nodes)} noticias", text_color="white")
-                self.tabview.set("Fuentes y Enlaces")
+                self.generar_lista_links(filtered)  # Pasamos lista normal
+                self.lbl_status.configure(text=f"Grafo generado: {len(nodes)} nodos", text_color="white")
+                self.tabview.set("Grafo Temporal")
             else:
                 self.lbl_status.configure(text="Error Graphviz", text_color="red")
         except Exception as e:
-            self.lbl_status.configure(text=f"Error: {e}", text_color="red")
+            self.lbl_status.configure(text=f"Error Viz: {e}", text_color="red")
 
+    # --- NUEVAS FUNCIONES DE ALGORITMOS VISUALES ---
+    def mostrar_ruta_narrativa(self):
+        """Ejecuta Dijkstra y muestra el camino"""
+        if not self.temp_graph_obj:
+            self.lbl_status.configure(text="Primero analiza un tema.", text_color="orange")
+            return
 
-    # --- NUEVA FUNCIÓN KILLER: TOP 10 GLOBAL ---
+        nodes = self.temp_graph_obj.get_all_nodes()
+        if len(nodes) < 2: return
+
+        start_node = nodes[0]  # Noticia más antigua
+        end_node = nodes[-1]  # Noticia más reciente
+
+        self.lbl_status.configure(text="Calculando Ruta Narrativa (Dijkstra)...", text_color="yellow")
+        self.update()
+
+        path = self._dijkstra(self.temp_graph_obj, start_node, end_node)
+
+        if not path:
+            self.lbl_status.configure(text="No hay camino narrativo claro.", text_color="orange")
+            return
+
+        # Visualizar Ruta
+        viz = GraphVisualizer(self.temp_graph_obj)
+        output = "ruta_narrativa"
+        success = viz.visualize_path(path, output_file=output, format="png")
+
+        if success:
+            self.cargar_imagen_memoria(output + ".png")
+
+            # Filtrar la lista de la derecha para mostrar SOLO la ruta
+            path_data = [d for d in self.current_filtered_data if str(d['id']) in path]
+            self.generar_lista_links(path_data, title="RUTA NARRATIVA (DIJKSTRA)")
+
+            self.lbl_status.configure(text=f"Ruta óptima encontrada: {len(path)} pasos.", text_color="#2980b9")
+            self.tabview.set("Grafo Temporal")
+
+    def mostrar_noticia_central(self):
+        """Ejecuta Floyd-Warshall y destaca el nodo central"""
+        if not self.temp_graph_obj:
+            self.lbl_status.configure(text="Primero analiza un tema.", text_color="orange")
+            return
+
+        self.lbl_status.configure(text="Calculando Centralidad (Floyd-Warshall)...", text_color="yellow")
+        self.update()
+
+        central_node_id = self._floyd_warshall_centrality(self.temp_graph_obj)
+
+        if central_node_id:
+            # Visualizar Subgrafo resaltando el centro
+            viz = GraphVisualizer(self.temp_graph_obj)
+            output = "noticia_central"
+            # Mostramos vecinos del central para contexto
+            neighbors = [n[0] for n in self.temp_graph_obj.get_neighbors(central_node_id)]
+            nodes_to_show = [central_node_id] + neighbors
+
+            success = viz.visualize_subgraph(nodes_to_show, output_file=output,
+                                             highlight_nodes=[central_node_id], format="png")
+
+            if success:
+                self.cargar_imagen_memoria(output + ".png")
+
+                # Mostrar info en la lista
+                central_data = [d for d in self.current_filtered_data if str(d['id']) == central_node_id]
+                self.generar_lista_links(central_data, title="NOTICIA CENTRAL (FLOYD-WARSHALL)")
+
+                # Popup informativo
+                tk.messagebox.showinfo("Análisis de Centralidad",
+                                       f"La noticia más influyente del periodo es:\n\n{central_data[0]['headline']}\n\n"
+                                       f"Motivo: Tiene la menor distancia promedio hacia todos los eventos futuros.")
+
+                self.lbl_status.configure(text="Centralidad calculada.", text_color="#8e44ad")
+
     def generar_top_10_global(self):
         if not self.all_data:
             self.lbl_status.configure(text="¡Carga datos primero!", text_color="orange")
@@ -231,48 +425,32 @@ class NewsAnalyzerApp(ctk.CTk):
         # 1. Stopwords (Lista ampliada)
         stopwords = {
             "the", "of", "to", "and", "a", "in", "is", "it", "you", "that", "he", "was", "for", "on", "are", "with",
-            "as",
-            "i", "his", "they", "be", "at", "one", "have", "this", "from", "or", "had", "by", "hot", "but", "some",
-            "what",
-            "there", "we", "can", "out", "other", "were", "all", "your", "when", "up", "use", "word", "how", "said",
-            "an",
-            "each", "she", "which", "do", "their", "time", "if", "will", "way", "about", "many", "then", "them",
-            "would",
-            "write", "like", "so", "these", "her", "long", "make", "thing", "see", "him", "two", "has", "look", "more",
-            "day", "could", "go", "come", "did", "my", "sound", "no", "most", "number", "who", "over", "know", "water",
-            "than", "call", "first", "people", "may", "down", "side", "been", "now", "find", "new", "part", "after",
-            "says",
-            "images", "news", "report", "daily", "times", "post", "view", "video", "source", "link", "read", "share",
-            "http", "https",
-            "chars", "brief", "full", "story", "fuente", "html"
+            "as", "i", "his", "they", "be", "at", "one", "have", "this", "from", "or", "had", "by", "hot", "but",
+            "some", "what", "there", "we", "can", "out", "other", "were", "all", "your", "when", "up", "use", "word",
+            "how", "said", "an", "each", "she", "which", "do", "their", "time", "if", "will", "way", "about", "many",
+            "then", "them", "would", "write", "like", "so", "these", "her", "long", "make", "thing", "see", "him",
+            "two", "has", "look", "more", "day", "could", "go", "come", "did", "my", "sound", "no", "most", "number",
+            "who", "over", "know", "water", "than", "call", "first", "people", "may", "down", "side", "been", "now",
+            "find", "new", "part", "after", "says", "images", "news", "report", "daily", "times", "post", "view",
+            "video", "source", "link", "read", "share", "http", "https", "chars", "brief", "full", "story", "fuente",
+            "html", "say", "year", "state"
         }
 
-        # 2. Contar usando la función auxiliar
         all_words = []
         for d in self.all_data:
             words = self._obtener_palabras_limpias(d)
-            # Filtramos stopwords y palabras muy cortas
             clean_words = [w for w in words if w not in stopwords and len(w) > 3]
             all_words.extend(clean_words)
 
-        # 3. Ordenar y Graficar
-        from collections import Counter
-
-
+        # Hash Map Counting
         counter = Counter(all_words)
-
-        # Convertimos el contador a una lista de tuplas: [('word', 50), ('other', 20)...]
         items = list(counter.items())
 
-        # Usamos merge_sort ordenando por el segundo elemento (la frecuencia)
-        # Nota: Merge Sort ordena de menor a mayor.
         try:
+            # Divide & Conquer Sorting
             sorted_items = merge_sort(items, key_func=lambda x: x[1])
-
-            # Como queremos los mayores, tomamos los últimos 10 y le damos la vuelta
-            top_10 = sorted_items[-10:]  # Los 10 del final (los más grandes)
-            top_10.reverse()  # Para que el #1 quede primero
-
+            top_10 = sorted_items[-10:]
+            top_10.reverse()
         except Exception as e:
             print(f"Error en Merge Sort: {e}, usando backup...")
             top_10 = counter.most_common(10)
@@ -282,10 +460,8 @@ class NewsAnalyzerApp(ctk.CTk):
 
         plt.style.use('dark_background')
         fig, ax = plt.subplots(figsize=(8, 5))
-
         bars = ax.barh(words_plot, counts_plot, color='#9b59b6')
         ax.invert_yaxis()
-
         ax.bar_label(bars, padding=3, color='white', fontsize=10, fontweight='bold')
         ax.set_title("TOP 10 TENDENCIAS GLOBALES", color='white', fontsize=14)
         ax.margins(x=0.1)
@@ -320,26 +496,43 @@ class NewsAnalyzerApp(ctk.CTk):
         self.canvas.create_image(0, 0, image=self.current_tk_image, anchor="nw")
         self.canvas.configure(scrollregion=(0, 0, new_w, new_h))
 
-    def generar_lista_links(self):
+    def generar_lista_links(self, data_list, title="Noticias Relacionadas"):
         for widget in self.scroll_links.winfo_children():
             widget.destroy()
-        if not self.current_filtered_data:
+
+        # Título dinámico en la lista
+        ctk.CTkLabel(self.scroll_links, text=title, font=("Arial", 16, "bold"), text_color="#3498db").pack(pady=5)
+
+        if not data_list:
             ctk.CTkLabel(self.scroll_links, text="No hay noticias.").pack()
             return
-        for item in self.current_filtered_data:
+
+        for item in data_list:
             card = ctk.CTkFrame(self.scroll_links)
             card.pack(fill="x", padx=5, pady=5)
-            title = item.get('headline', 'Sin título')
-            if len(title) > 100: title = title[:100] + "..."
-            ctk.CTkLabel(card, text=title, font=("Arial", 14, "bold"), anchor="w").pack(fill="x", padx=5, pady=(5, 0))
+
+            headline = item.get('headline', 'Sin título')
+            if len(headline) > 90: headline = headline[:90] + "..."
+
+            ctk.CTkLabel(card, text=headline, font=("Arial", 13, "bold"), anchor="w").pack(fill="x", padx=5,
+                                                                                           pady=(5, 0))
+
             sub_frame = ctk.CTkFrame(card, fg_color="transparent")
             sub_frame.pack(fill="x", padx=5, pady=5)
-            tone_val = item.get('tone', 0)
-            #tone_text = "🟢 Positivo" if tone_val > 0 else ("🔴 Conflicto" if tone_val < 0 else "🟡 Neutral")
-            ctk.CTkLabel(sub_frame, text=f"{item.get('date', '')}", text_color="gray").pack(side="left")
+
+            tone = item.get('tone', 0)
+            emoji_tone = "😐"
+            if tone > 0:
+                emoji_tone = "🙂 Positivo"
+            elif tone < 0:
+                emoji_tone = "😡 Negativo"
+
+            ctk.CTkLabel(sub_frame, text=f"📅 {item.get('date', '')} | {emoji_tone}", text_color="gray",
+                         font=("Arial", 11)).pack(side="left")
+
             url = item.get('url', '')
             if url:
-                btn = ctk.CTkButton(sub_frame, text="Leer Fuente 🔗", height=24, width=100,
+                btn = ctk.CTkButton(sub_frame, text="Leer 🔗", height=20, width=60,
                                     command=lambda u=url: webbrowser.open(u))
                 btn.pack(side="right")
 
@@ -350,19 +543,13 @@ class NewsAnalyzerApp(ctk.CTk):
         if not t1 or not t2: return
         if not self.all_data: return
 
-        # --- NUEVA LÓGICA DE CONTEO EXACTO ---
         count1 = 0
         count2 = 0
 
         for d in self.all_data:
-            # Usamos LA MISMA función de limpieza que el Top 10
             words = self._obtener_palabras_limpias(d)
-
-            # Contamos palabras exactas
-            # Esto evita que "Trumpet" cuente como "Trump"
             count1 += words.count(t1)
             count2 += words.count(t2)
-        # -------------------------------------
 
         plt.style.use('dark_background')
         fig, ax = plt.subplots(figsize=(6, 4))
