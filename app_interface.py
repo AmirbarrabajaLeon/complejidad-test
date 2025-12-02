@@ -343,7 +343,7 @@ class NewsAnalyzerApp(ctk.CTk):
 
     # --- NUEVAS FUNCIONES DE ALGORITMOS VISUALES ---
     def mostrar_ruta_narrativa(self):
-        """Ejecuta Dijkstra y muestra el camino"""
+        """Ejecuta Dijkstra y muestra el camino SOBRE el grafo original"""
         if not self.temp_graph_obj:
             self.lbl_status.configure(text="Primero analiza un tema.", text_color="orange")
             return
@@ -351,8 +351,8 @@ class NewsAnalyzerApp(ctk.CTk):
         nodes = self.temp_graph_obj.get_all_nodes()
         if len(nodes) < 2: return
 
-        start_node = nodes[0]  # Noticia más antigua
-        end_node = nodes[-1]  # Noticia más reciente
+        start_node = nodes[0]
+        end_node = nodes[-1]
 
         self.lbl_status.configure(text="Calculando Ruta Narrativa (Dijkstra)...", text_color="yellow")
         self.update()
@@ -363,16 +363,24 @@ class NewsAnalyzerApp(ctk.CTk):
             self.lbl_status.configure(text="No hay camino narrativo claro.", text_color="orange")
             return
 
-        # Visualizar Ruta
+        # --- CAMBIO VISUAL: Usamos visualize_graph con highlight_path ---
         viz = GraphVisualizer(self.temp_graph_obj)
         output = "ruta_narrativa"
-        success = viz.visualize_path(path, output_file=output, format="png")
+
+        # Reutilizamos el diseño bonito, pero pasamos el path para colorear
+        success = viz.visualize_graph(output_file=output, format="png", max_nodes=100, highlight_path=path)
 
         if success:
             self.cargar_imagen_memoria(output + ".png")
 
-            # Filtrar la lista de la derecha para mostrar SOLO la ruta
+            # --- CORRECCIÓN DE ORDEN DE LA LISTA ---
+            # Filtramos los datos que están en el path
             path_data = [d for d in self.current_filtered_data if str(d['id']) in path]
+
+            # LA CLAVE: Ordenamos esta lista basándonos en el índice de su ID en el 'path' de Dijkstra
+            # Esto fuerza que la lista lateral coincida exactamente con las flechas rojas (1->2->3)
+            path_data.sort(key=lambda x: path.index(str(x['id'])))
+
             self.generar_lista_links(path_data, title="RUTA NARRATIVA (DIJKSTRA)")
 
             self.lbl_status.configure(text=f"Ruta óptima encontrada: {len(path)} pasos.", text_color="#2980b9")
@@ -521,11 +529,11 @@ class NewsAnalyzerApp(ctk.CTk):
             sub_frame.pack(fill="x", padx=5, pady=5)
 
             tone = item.get('tone', 0)
-            emoji_tone = "😐"
+            emoji_tone = "Neutral"
             if tone > 0:
-                emoji_tone = "🙂 Positivo"
+                emoji_tone = "Positivo"
             elif tone < 0:
-                emoji_tone = "😡 Negativo"
+                emoji_tone = "Negativo"
 
             ctk.CTkLabel(sub_frame, text=f"📅 {item.get('date', '')} | {emoji_tone}", text_color="gray",
                          font=("Arial", 11)).pack(side="left")
