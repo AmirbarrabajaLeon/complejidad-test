@@ -66,11 +66,11 @@ class NewsAnalyzerApp(ctk.CTk):
         self.lbl_algo = ctk.CTkLabel(self.sidebar, text="Algoritmos Avanzados:", anchor="w", font=("Arial", 12, "bold"))
         self.lbl_algo.grid(row=6, column=0, padx=20, pady=(20, 5))
 
-        self.btn_dijkstra = ctk.CTkButton(self.sidebar, text="📍 Ruta Narrativa (Dijkstra)", fg_color="#2980b9",
+        self.btn_dijkstra = ctk.CTkButton(self.sidebar, text="Ruta Narrativa (Dijkstra)", fg_color="#2980b9",
                                           command=self.mostrar_ruta_narrativa)
         self.btn_dijkstra.grid(row=7, column=0, padx=20, pady=5)
 
-        self.btn_floyd = ctk.CTkButton(self.sidebar, text="⭐ Noticia Central (Floyd)", fg_color="#8e44ad",
+        self.btn_floyd = ctk.CTkButton(self.sidebar, text="Noticia Central (Floyd)", fg_color="#8e44ad",
                                        command=self.mostrar_noticia_central)
         self.btn_floyd.grid(row=8, column=0, padx=20, pady=5)
         # ----------------------------------------------
@@ -298,7 +298,7 @@ class NewsAnalyzerApp(ctk.CTk):
         nodes = self.temp_graph_obj.get_all_nodes()
 
         # --- CONSTRUCCIÓN INTELIGENTE DEL GRAFO ---
-        WINDOW_SIZE = 3
+        WINDOW_SIZE = 10
         for i in range(len(nodes)):
             node_a = self.temp_graph_obj.get_node(nodes[i])
 

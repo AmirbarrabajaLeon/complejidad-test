@@ -5,6 +5,7 @@ import datetime
 import time
 
 
+
 # ### NUEVO: Necesitamos esto para manejar las fechas en el Eje X
 def date_to_timestamp(date_str: str) -> float:
     """Convierte string de fecha a timestamp (float) para el eje X"""
@@ -15,6 +16,7 @@ def date_to_timestamp(date_str: str) -> float:
         return dt.timestamp()
     except ValueError:
         return 0.0
+
 
 
 class Node:
@@ -48,6 +50,7 @@ class Node:
 
     def __hash__(self):
         return hash(self.id)
+
 
 
 class Graph:
